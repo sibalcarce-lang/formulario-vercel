@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>Constancia de Autorización - Servicios Integrales</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <!-- jsPDF -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <!-- Signature Pad -->
+  <script src="https://cdn.jsdelivr.net/npm/signature_pad@4.1.5/dist/signature_pad.umd.min.js"></script>
+
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 16px;
+      background: #f5f5f5;
+    }
+    .container {
+      max-width: 600px;
+      margin: 0 auto;
+      background: #ffffff;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+    }
+    h1 {
+      font-size: 20px;
+      text-align: center;
+      margin-bottom: 20px;
+    }
+    label {
+      display: block;
+      margin-top: 12px;
+      font-weight: bold;
+    }
+    input {
+      width: 100%;
+      padding: 8px;
+      margin-top: 4px;
+      box-sizing: border-box;
+    }
+    .signature-wrapper {
+      margin-top: 16px;
+    }
+    canvas {
+      width: 100%;
+      height: 200px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      touch-action: none;
+      background: #ffffff;
+    }
+    .buttons {
+      margin-top: 16px;
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    button {
+      flex: 1;
+      padding: 10px;
+      border: none;
+      cursor: pointer;
+      border-radius: 4px;
+      font-weight: bold;
+    }
+    .btn-clear {
+      background: #cccccc;
+    }
+    .btn-submit {
+      background: #007bff;
+      color: white;
+    }
+    .info {
+      font-size: 13px;
+      margin-top: 10px;
+      color: #555;
+    }
+    .success, .error {
+      margin-top: 12px;
+      padding: 8px;
+      border-radius: 4px;
+      font-size: 14px;
+    }
+    .success {
+      background: #d4edda;
+      color: #155724;
+    }
+    .error {
+      background: #f8d7da;
+      color: #721c24;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>CONSTANCIA DE AUTORIZACIÓN Y CESIÓN DE DERECHOS</h1>
+
+    <form id="form-autorizacion">
+      <label for="nombre">Nombre completo</label>
+      <input type="text" id="nombre" name="nombre" required />
+
+      <label for="dni">DNI</label>
+      <input type="text" id="dni" name="dni" required />
+
+      <label for="telefono">Teléfono</label>
+      <input type="tel" id="telefono" name="telefono" required />
+
+      <div class="signature-wrapper">
+        <label>Firma del Cliente (dibujar con el dedo o mouse)</label>
+        <canvas id="signature-pad"></canvas>
+        <div class="buttons">
+          <button type="button" class="btn-clear" id="clear-signature">Borrar firma</button>
+          <button type="submit" class="btn-submit">Firmar y generar PDF</button>
+        </div>
+      </div>
+
+      <p class="info">
+        Al presionar “Firmar y generar PDF”, se descargará el documento en tu dispositivo y se enviará una copia a la empresa.
+      </p>
+
+      <div id="message"></div>
+    </form>
+  </div>
+
+  <script>
+    // --- Firma en canvas ---
+    const canvas = document.getElementById("signature-pad");
+    const signaturePad = new SignaturePad(canvas, {
+      backgroundColor: "rgb(255,255,255)"
+    });
+
+    function resizeCanvas() {
+      const ratio = Math.max(window.devicePixelRatio || 1, 1);
+      const width = canvas.offsetWidth;
+      const height = 200; // altura fija
+      canvas.width = width * ratio;
+      canvas.height = height * ratio;
+      const ctx = canvas.getContext("2d");
+      ctx.scale(ratio, ratio);
+      signaturePad.clear();
+    }
+
+    window.addEventListener("resize", resizeCanvas);
+    setTimeout(resizeCanvas, 100);
+
+    document.getElementById("clear-signature").addEventListener("click", function () {
+      signaturePad.clear();
+    });
+
+    // --- Manejo del formulario ---
+    const form = document.getElementById("form-autorizacion");
+    const messageDiv = document.getElementById("message");
+
+    form.addEventListener("submit", async function (e) {
+      e.preventDefault();
+      messageDiv.innerHTML = "";
+
+      const nombre = document.getElementById("nombre").value.trim();
+      const dni = document.getElementById("dni").value.trim();
+      const telefono = document.getElementById("telefono").value.trim();
+
+      if (!nombre || !dni || !telefono) {
+        showMessage("Por favor complete todos los campos.", "error");
+        return;
+      }
+
+      if (signaturePad.isEmpty()) {
+        showMessage("Por favor firme en el recuadro.", "error");
+        return;
+      }
+
+      const hoy = new Date();
+      const fecha = hoy.toLocaleDateString("es-AR", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric"
+      });
+
+      try {
+        const pdfBase64 = await generarPDF({ nombre, dni, telefono, fecha });
+
+        // Descargar al cliente
+        descargarPDFCliente(pdfBase64, `Constancia_${nombre.replace(/\s+/g, "_")}.pdf`);
+
+        // Enviar al servidor (AHORA VERCEL)
+        await enviarPDFServidor({ nombre, dni, telefono, fecha, pdfBase64 });
+
+        showMessage("PDF generado, descargado y enviado a la empresa.", "success");
+      } catch (err) {
+        console.error(err);
+        showMessage("Ocurrió un error al generar o enviar el PDF.", "error");
+      }
+    });
+
+    function showMessage(text, type) {
+      messageDiv.className = type === "success" ? "success" : "error";
+      messageDiv.textContent = text;
+    }
+
+    async function generarPDF({ nombre, dni, telefono, fecha }) {
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF({
+        unit: "mm",
+        format: "a4"
+      });
+
+      const marginLeft = 20;
+      let y = 20;
+
+      doc.setFont("Times", "Bold");
+      doc.setFontSize(14);
+      doc.text(
+        "CONSTANCIA DE AUTORIZACIÓN Y CESIÓN DE DERECHOS PARA EL CIERRE DE CRÉDITO",
+        105,
+        y,
+        { align: "center" }
+      );
+      y += 15;
+
+      doc.setFont("Times", "Normal");
+      doc.setFontSize(12);
+
+      const texto = `
+Yo, ${nombre}, identificado con DNI ${dni}, en pleno uso de mis facultades legales, por medio de la presente dejo expresa constancia de que otorgo mi total conformidad y autorización a la empresa SERVICIOS INTEGRALES, representada por JUAN DOMINGO FERRAGGINI, para que proceda en mi nombre y con mi consentimiento al cierre, cancelación y/o finiquito del crédito.
+
+Asimismo, cedo de manera voluntaria, irrevocable y sin condicionamiento alguno, todos los derechos necesarios sobre la gestión administrativa, financiera y operativa relacionada con el referido crédito, a efectos de que la mencionada empresa pueda realizar todas las acciones, trámites, solicitudes, comunicaciones y procedimientos que resulten necesarios para concretar el cierre definitivo del mismo.
+
+Declaro además que:
+
+He sido debidamente informado sobre el procedimiento de cierre del crédito.
+
+Otorgo esta autorización de manera consciente, libre de coacción y en plena conformidad.
+
+Reconozco que la empresa SERVICIOS INTEGRALES actuará únicamente con el fin de gestionar y concluir el cierre del crédito indicado.
+
+Esta cesión y autorización podrán ser utilizadas como prueba válida ante cualquier entidad pública o privada que participe o intervenga en el proceso.
+
+En señal de conformidad, firmo la presente Constancia de Autorización y Cesión de Derechos, dejando registro y validez legal de mi voluntad.
+
+Balcarce, Provincia de Buenos Aires – ${fecha}
+      `;
+
+      const lines = doc.splitTextToSize(texto.trim(), 170);
+      doc.text(lines, marginLeft, y);
+      y += lines.length * 6 + 20;
+
+      // Firma del cliente
+      doc.setFont("Times", "Bold");
+      doc.text("Firma del Cliente:", marginLeft, y);
+      y += 5;
+
+      const signatureDataUrl = signaturePad.toDataURL("image/png");
+      const imgWidth = 60;
+      const imgHeight = 25;
+      doc.addImage(signatureDataUrl, "PNG", marginLeft, y, imgWidth, imgHeight);
+      y += imgHeight + 10;
+
+      doc.setFont("Times", "Normal");
+      doc.text(nombre, marginLeft, y);
+      y += 10;
+
+      // Datos empresa
+      doc.setFont("Times", "Bold");
+      doc.text("JUAN DOMINGO FERRAGGINI", marginLeft, y);
+      y += 6;
+      doc.text("DUEÑO", marginLeft, y);
+      y += 6;
+      doc.text("SERVICIOS INTEGRALES", marginLeft, y);
+
+      const pdfDataUri = doc.output("datauristring");
+      const base64 = pdfDataUri.split(",")[1];
+      return base64;
+    }
+
+    function descargarPDFCliente(base64Data, filename) {
+      const linkSource = `data:application/pdf;base64,${base64Data}`;
+      const downloadLink = document.createElement("a");
+      downloadLink.href = linkSource;
+      downloadLink.download = filename;
+      downloadLink.click();
+    }
+
+    // 🔥🔥🔥 ESTA ES LA PARTE MODIFICADA PARA VERCEL 🔥🔥🔥
+    async function enviarPDFServidor(payload) {
+      const response = await fetch("/api/sendEmail", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(payload)
+      });
+
+      if (!response.ok) {
+        throw new Error("Error en la API de Vercel");
+      }
+    }
+  </script>
+</body>
+</html>

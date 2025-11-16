@@ -1,0 +1,14 @@
+{
+  "name": "formulario-autorizacion",
+  "version": "1.0.0",
+  "description": "Formulario con firma que genera PDF y envía email con Resend",
+  "main": "index.js",
+  "scripts": {
+    "dev": "vercel dev",
+    "build": "",
+    "start": "vercel dev"
+  },
+  "dependencies": {
+    "resend": "latest"
+  }
+}

@@ -16,13 +16,11 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: "Faltan datos en el cuerpo de la solicitud" });
     }
 
-    // Link al PDF como data URL (se puede abrir/guardar desde el mail)
     const safeName = nombre.replace(/\s+/g, "_");
     const pdfFileName = `Constancia_${safeName}.pdf`;
-    const pdfDataUrl = `data:application/pdf;base64,${pdfBase64}`;
 
     const { error } = await resend.emails.send({
-      from: "Formularios <onboarding@resend.dev>", // si después verificás tu dominio, cambiamos esto
+      from: "Formularios <onboarding@resend.dev>", // luego se puede cambiar por tu dominio
       to: "s.i.balcarce@gmail.com",                // 📩 TU MAIL
       subject: `Nuevo formulario firmado - ${nombre}`,
       html: `
@@ -33,16 +31,19 @@ export default async function handler(req, res) {
         <p><strong>Fecha:</strong> ${fecha}</p>
         <hr />
         <p>
-          Puedes descargar la constancia en PDF desde este enlace:<br/>
-          <a href="${pdfDataUrl}" download="${pdfFileName}">
-            Descargar PDF firmado
-          </a>
+          Se adjunta en este correo la constancia en PDF firmada por el cliente.
         </p>
         <p style="font-size:12px;color:#555;margin-top:16px;">
-          Nota: Este enlace contiene el archivo PDF en formato seguro (base64).
-          También se descargó automáticamente en el dispositivo del cliente.
+          El cliente también descargó una copia en su dispositivo al firmar el formulario.
         </p>
       `,
+      attachments: [
+        {
+          filename: pdfFileName,
+          content: pdfBase64,         // PDF en base64
+          contentType: "application/pdf",
+        },
+      ],
     });
 
     if (error) {
@@ -56,4 +57,5 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: "Error interno del servidor" });
   }
 }
+
 
